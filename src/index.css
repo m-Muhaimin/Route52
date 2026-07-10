@@ -1,0 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Geist:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-background: #090e0a;
+  --color-on-background: #e2f0e6;
+  --color-surface: #090e0a;
+  --color-surface-container-lowest: #050806;
+  --color-surface-container-low: #0d1410;
+  --color-surface-container: #121b15;
+  --color-surface-container-high: #1a261f;
+  --color-surface-container-highest: #24332a;
+  --color-on-surface: #e2f0e6;
+  --color-on-surface-variant: #9fbfa9;
+  --color-outline: #5f7f6a;
+  --color-outline-variant: #2d3d33;
+  --color-primary: #00ff66;
+  --color-on-primary: #003311;
+  --color-primary-container: #006622;
+  --color-on-primary-container: #b3ffd1;
+  --color-secondary-container: #1c3326;
+  --color-on-secondary-container: #a3e0be;
+  --color-tertiary: #39ff14;
+  --color-on-tertiary: #0b3300;
+  --color-tertiary-container: #1a6600;
+  --color-on-tertiary-container: #c2ffb3;
+  --color-error: #ff5555;
+  --color-error-container: #801111;
+  --color-on-error-container: #ffdad6;
+  
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-headline: "Geist", "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@utility glass-card {
+  background: rgba(18, 27, 21, 0.65);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(45, 61, 51, 0.6);
+}
+
+@utility chat-input-shadow {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+body {
+  background-color: #090e0a;
+  color: #e2f0e6;
+  font-family: var(--font-sans);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #090e0a;
+}
+::-webkit-scrollbar-thumb {
+  background: #1a261f;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #24332a;
+}
