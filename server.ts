@@ -14,7 +14,7 @@ async function startServer() {
     try {
       const { message, sessionId, customWebhookUrl } = req.body;
       
-      const n8nUrl = customWebhookUrl || "https://n8n-m1if.muhaimin.dev/webhook/bd-native-agent-chat/chat";
+      const n8nUrl = customWebhookUrl || "https://n8n-m1if.muhaimin.dev/webhook/3572f7fd-e15d-4208-87a3-1bef0c7d2312/chat";
       
       // Create standard payload for n8n AI Chat Trigger
       const payload = {
@@ -37,20 +37,67 @@ async function startServer() {
       if (!response.ok) {
         console.error(`[Proxy] n8n responded with error status: ${response.status}`);
         const errorText = await response.text();
-        throw new Error(`n8n webhook returned status ${response.status}: ${errorText}`);
+        return res.status(response.status).json({ error: `n8n webhook returned status ${response.status}: ${errorText}` });
       }
 
-      const contentType = response.headers.get("content-type");
-      let data;
-      if (contentType && contentType.includes("application/json")) {
-        data = await response.json();
+      const contentType = response.headers.get("content-type") || "";
+
+      // Stream support: if there's a response body, pipe/stream it
+      if (response.body) {
+        res.setHeader("Content-Type", "text/event-stream");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+
+        const body = response.body as any;
+        if (typeof body.getReader === "function") {
+          const reader = body.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              res.write(value);
+            }
+          } catch (streamErr) {
+            console.error("[Proxy] Stream reading error:", streamErr);
+          } finally {
+            try {
+              reader.releaseLock();
+            } catch (_) {}
+            res.end();
+          }
+        } else if (typeof body.on === "function") {
+          // Node.js stream fallback
+          body.on("data", (chunk: any) => {
+            res.write(chunk);
+          });
+          body.on("end", () => {
+            res.end();
+          });
+          body.on("error", (err: any) => {
+            console.error("[Proxy] Node stream error:", err);
+            res.end();
+          });
+        } else if (typeof body[Symbol.asyncIterator] === "function") {
+          // Async iterable fallback
+          try {
+            for await (const chunk of body) {
+              res.write(chunk);
+            }
+          } catch (streamErr) {
+            console.error("[Proxy] Async iterator stream error:", streamErr);
+          } finally {
+            res.end();
+          }
+        } else {
+          const text = await response.text();
+          res.write(text);
+          res.end();
+        }
       } else {
+        // Simple fallback
         const text = await response.text();
-        data = { output: text };
+        res.send(text);
       }
-
-      console.log(`[Proxy] Successfully received response from n8n`);
-      res.json(data);
     } catch (error: any) {
       console.error("[Proxy] Error calling n8n webhook:", error);
       res.status(500).json({ error: error.message || "Failed to communicate with n8n" });

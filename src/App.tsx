@@ -38,7 +38,12 @@ export default function App() {
 
   // Settings states
   const [webhookUrl, setWebhookUrl] = useState(() => {
-    return localStorage.getItem("route52_webhook") || "https://n8n-m1if.muhaimin.dev/webhook/bd-native-agent-chat/chat";
+    const saved = localStorage.getItem("route52_webhook");
+    if (!saved || saved === "https://n8n-m1if.muhaimin.dev/webhook/bd-native-agent-chat/chat") {
+      localStorage.setItem("route52_webhook", "https://n8n-m1if.muhaimin.dev/webhook/3572f7fd-e15d-4208-87a3-1bef0c7d2312/chat");
+      return "https://n8n-m1if.muhaimin.dev/webhook/3572f7fd-e15d-4208-87a3-1bef0c7d2312/chat";
+    }
+    return saved;
   });
   const [activeModel, setActiveModel] = useState(() => {
     return localStorage.getItem("route52_model") || "v4.0-pro-engine";
@@ -353,6 +358,29 @@ export default function App() {
       updateThreads(updatedThreadList, activeThreadObj!);
     }
 
+    // Create assistant message with loading/initial state
+    const botMessageId = `b-${Date.now()}`;
+    let botReplyText = "";
+    
+    const initialBotMessage: Message = {
+      id: botMessageId,
+      role: "assistant",
+      content: "",
+      timestamp: "Just now"
+    };
+
+    // Append user message AND the placeholder assistant message to threads
+    let currentThreadsWithBot = updatedThreadList.map((t) => {
+      if (t.id === currentThreadId) {
+        return {
+          ...t,
+          messages: [...t.messages, initialBotMessage]
+        };
+      }
+      return t;
+    });
+    setThreads(currentThreadsWithBot);
+
     try {
       // Call Express Proxy Backend
       const response = await fetch("/api/chat", {
@@ -369,29 +397,159 @@ export default function App() {
         throw new Error(`HTTP error ${response.status}`);
       }
 
-      const rawData = await response.json();
-      const botReplyText = parseResponse(rawData);
+      const contentType = response.headers.get("content-type") || "";
 
-      const botMessage: Message = {
-        id: `b-${Date.now()}`,
-        role: "assistant",
-        content: botReplyText,
-        timestamp: "Just now"
-      };
+      if (contentType.includes("text/event-stream") && response.body) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
 
-      // Append bot answer to the active thread
-      let finalThreadObj: Thread;
-      const finalThreads = updatedThreadList.map((t) => {
-        if (t.id === currentThreadId) {
-          finalThreadObj = {
-            ...t,
-            messages: [...t.messages, botMessage]
-          };
-          return finalThreadObj;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
+
+            let contentToParse = trimmedLine;
+            if (contentToParse.startsWith("data:")) {
+              contentToParse = contentToParse.slice(5).trim();
+              if (contentToParse === "[DONE]") continue;
+            }
+
+            // Attempt to parse chunk as JSON
+            try {
+              const parsed = JSON.parse(contentToParse);
+              if (typeof parsed === "object" && parsed !== null) {
+                const chunk = parsed.chunk || parsed.text || parsed.output || parsed.response || parsed.message || parsed.content || parsed.reply || "";
+                if (chunk) {
+                  botReplyText += chunk;
+                } else {
+                  // Fallback: search for any non-empty string fields
+                  let found = "";
+                  for (const key of Object.keys(parsed)) {
+                    if (typeof parsed[key] === "string" && parsed[key].trim()) {
+                      found = parsed[key];
+                      break;
+                    }
+                  }
+                  if (found) {
+                    botReplyText += found;
+                  } else {
+                    botReplyText += JSON.stringify(parsed);
+                  }
+                }
+              } else {
+                botReplyText += String(parsed);
+              }
+            } catch (_) {
+              // Non-JSON chunk, treat as raw text
+              botReplyText += (trimmedLine.startsWith("data:") ? contentToParse : trimmedLine) + "\n";
+            }
+
+            // Update state dynamically to enable live typing updates
+            currentThreadsWithBot = currentThreadsWithBot.map((t) => {
+              if (t.id === currentThreadId) {
+                return {
+                  ...t,
+                  messages: t.messages.map((m) => {
+                    if (m.id === botMessageId) {
+                      return { ...m, content: botReplyText.trim() };
+                    }
+                    return m;
+                  })
+                };
+              }
+              return t;
+            });
+            setThreads(currentThreadsWithBot);
+          }
         }
-        return t;
-      });
-      updateThreads(finalThreads, finalThreadObj!);
+
+        // Parse remaining buffer
+        if (buffer) {
+          const trimmedLine = buffer.trim();
+          if (trimmedLine) {
+            let contentToParse = trimmedLine;
+            if (contentToParse.startsWith("data:")) {
+              contentToParse = contentToParse.slice(5).trim();
+            }
+
+            try {
+              const parsed = JSON.parse(contentToParse);
+              if (typeof parsed === "object" && parsed !== null) {
+                const chunk = parsed.chunk || parsed.text || parsed.output || parsed.response || parsed.message || parsed.content || parsed.reply || "";
+                if (chunk) {
+                  botReplyText += chunk;
+                } else {
+                  let found = "";
+                  for (const key of Object.keys(parsed)) {
+                    if (typeof parsed[key] === "string" && parsed[key].trim()) {
+                      found = parsed[key];
+                      break;
+                    }
+                  }
+                  botReplyText += found || JSON.stringify(parsed);
+                }
+              } else {
+                botReplyText += String(parsed);
+              }
+            } catch (_) {
+              botReplyText += trimmedLine.startsWith("data:") ? contentToParse : trimmedLine;
+            }
+          }
+        }
+
+        if (!botReplyText.trim()) {
+          botReplyText = "Response stream completed without text content.";
+        }
+
+        // Final save to storage
+        let finalThreadObj: Thread;
+        const finalThreads = currentThreadsWithBot.map((t) => {
+          if (t.id === currentThreadId) {
+            finalThreadObj = {
+              ...t,
+              messages: t.messages.map((m) => {
+                if (m.id === botMessageId) {
+                  return { ...m, content: botReplyText.trim() };
+                }
+                return m;
+              })
+            };
+            return finalThreadObj;
+          }
+          return t;
+        });
+        updateThreads(finalThreads, finalThreadObj!);
+      } else {
+        // Fallback for standard JSON responses
+        const rawData = await response.json();
+        botReplyText = parseResponse(rawData);
+
+        let finalThreadObj: Thread;
+        const finalThreads = currentThreadsWithBot.map((t) => {
+          if (t.id === currentThreadId) {
+            finalThreadObj = {
+              ...t,
+              messages: t.messages.map((m) => {
+                if (m.id === botMessageId) {
+                  return { ...m, content: botReplyText };
+                }
+                return m;
+              })
+            };
+            return finalThreadObj;
+          }
+          return t;
+        });
+        updateThreads(finalThreads, finalThreadObj!);
+      }
     } catch (err: any) {
       console.error("Chat error:", err);
       const errorMessage: Message = {
@@ -603,20 +761,27 @@ export default function App() {
                   ) : (
                     /* Active message logs */
                     <div className="px-3 md:px-8 py-4 space-y-4 max-w-3xl mx-auto w-full select-text pb-36">
-                      {activeThread.messages.map((message) => (
-                        <MessageBubble
-                          key={message.id}
-                          message={message}
-                          onRegenerate={
-                            message.role === "assistant" && !message.content.startsWith("⚠️")
-                              ? () => handleSendMessage(activeThread.messages[activeThread.messages.length - 2]?.content)
-                              : undefined
-                          }
-                        />
-                      ))}
+                      {activeThread.messages.map((message, index) => {
+                        const isMsgStreaming = isLoading && 
+                          message.role === "assistant" && 
+                          index === activeThread.messages.length - 1;
 
-                      {/* Simulated typing loading indicators */}
-                      {isLoading && (
+                        return (
+                          <MessageBubble
+                            key={message.id}
+                            message={message}
+                            isStreaming={isMsgStreaming}
+                            onRegenerate={
+                              message.role === "assistant" && !message.content.startsWith("⚠️")
+                                ? () => handleSendMessage(activeThread.messages[activeThread.messages.length - 2]?.content)
+                                : undefined
+                            }
+                          />
+                        );
+                      })}
+
+                      {/* Simulated typing loading indicators - only show if the bot message is completely empty or not created yet */}
+                      {isLoading && (!activeThread.messages[activeThread.messages.length - 1] || !activeThread.messages[activeThread.messages.length - 1].content) && (
                         <div className="flex gap-3 w-full animate-pulse select-none">
                           <div className="w-7 h-7 rounded-lg bg-surface-container-highest flex items-center justify-center flex-shrink-0 mt-0.5">
                             <Loader2 className="w-3.5 h-3.5 text-primary animate-spin" />

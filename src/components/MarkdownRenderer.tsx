@@ -1,13 +1,73 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy, Check } from "lucide-react";
 
 interface MarkdownRendererProps {
   content: string;
+  isStreaming?: boolean;
 }
 
-export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
+// State-of-the-art smooth catch-up stream typewriter hook
+function useSmoothStream(targetText: string, isStreaming: boolean, speed = 12) {
+  const [displayedText, setDisplayedText] = useState("");
+  const targetRef = useRef(targetText);
+  const currentRef = useRef("");
+
+  useEffect(() => {
+    targetRef.current = targetText;
+    if (!isStreaming) {
+      setDisplayedText(targetText);
+      currentRef.current = targetText;
+    }
+  }, [targetText, isStreaming]);
+
+  useEffect(() => {
+    if (!isStreaming) {
+      setDisplayedText(targetText);
+      currentRef.current = targetText;
+      return;
+    }
+
+    const interval = setInterval(() => {
+      const target = targetRef.current;
+      const current = currentRef.current;
+
+      if (current === target) {
+        return;
+      }
+
+      if (target.startsWith(current)) {
+        const remaining = target.slice(current.length);
+        const distance = remaining.length;
+        
+        // Dynamically adjust step size to match chunk arrival speeds
+        const step = distance > 100 ? 10 : distance > 30 ? 5 : 2;
+        const nextSlice = remaining.slice(0, step);
+        const nextText = current + nextSlice;
+        currentRef.current = nextText;
+        setDisplayedText(nextText);
+      } else {
+        // Direct sync on thread change or reset
+        currentRef.current = target;
+        setDisplayedText(target);
+      }
+    }, speed);
+
+    return () => clearInterval(interval);
+  }, [isStreaming, speed]);
+
+  return displayedText;
+}
+
+export default function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps) {
+  const animatedContent = useSmoothStream(content, isStreaming, 12);
+  
+  // Append a blinking thick cursor if streaming
+  const renderedContent = isStreaming 
+    ? animatedContent + " ▍" 
+    : animatedContent;
+
   return (
     <div className="markdown-body select-text space-y-1 text-xs">
       <Markdown
@@ -121,7 +181,7 @@ export default function MarkdownRenderer({ content }: MarkdownRendererProps) {
           }
         }}
       >
-        {content}
+        {renderedContent}
       </Markdown>
     </div>
   );
