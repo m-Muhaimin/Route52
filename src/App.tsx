@@ -39,9 +39,13 @@ export default function App() {
   // Settings states
   const [webhookUrl, setWebhookUrl] = useState(() => {
     const saved = localStorage.getItem("route52_webhook");
-    if (!saved || saved === "https://n8n-m1if.muhaimin.dev/webhook/bd-native-agent-chat/chat") {
-      localStorage.setItem("route52_webhook", "https://n8n-m1if.muhaimin.dev/webhook/3572f7fd-e15d-4208-87a3-1bef0c7d2312/chat");
-      return "https://n8n-m1if.muhaimin.dev/webhook/3572f7fd-e15d-4208-87a3-1bef0c7d2312/chat";
+    const oldDefaults = [
+      "https://n8n-m1if.muhaimin.dev/webhook/bd-native-agent-chat/chat",
+      "https://n8n-m1if.muhaimin.dev/webhook/3572f7fd-e15d-4208-87a3-1bef0c7d2312/chat"
+    ];
+    if (!saved || oldDefaults.includes(saved)) {
+      localStorage.setItem("route52_webhook", "https://n8n-m1if.muhaimin.dev/webhook/9db2cf03-b24c-43aa-9940-af3d80fd8a58/chat");
+      return "https://n8n-m1if.muhaimin.dev/webhook/9db2cf03-b24c-43aa-9940-af3d80fd8a58/chat";
     }
     return saved;
   });

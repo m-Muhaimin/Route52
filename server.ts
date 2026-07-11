@@ -14,7 +14,7 @@ async function startServer() {
     try {
       const { message, sessionId, customWebhookUrl } = req.body;
       
-      const n8nUrl = customWebhookUrl || "https://n8n-m1if.muhaimin.dev/webhook/3572f7fd-e15d-4208-87a3-1bef0c7d2312/chat";
+      const n8nUrl = customWebhookUrl || "https://n8n-m1if.muhaimin.dev/webhook/9db2cf03-b24c-43aa-9940-af3d80fd8a58/chat";
       
       // Create standard payload for n8n AI Chat Trigger
       const payload = {
