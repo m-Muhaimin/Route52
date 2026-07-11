@@ -16,6 +16,7 @@ import MessageBubble from "./components/MessageBubble";
 import SettingsView from "./components/SettingsView";
 import HelpView from "./components/HelpView";
 import AuthModal from "./components/AuthModal";
+import AuthPage from "./components/AuthPage";
 import { Thread, Message, QuickAction } from "./types";
 import { loadThreads, saveThreads } from "./lib/chatStorage";
 import { supabase, isSupabaseConfigured } from "./lib/supabase";
@@ -35,6 +36,9 @@ export default function App() {
   // Authentication states
   const [user, setUser] = useState<any>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isGuest, setIsGuest] = useState(() => {
+    return localStorage.getItem("route52_is_guest") === "true";
+  });
 
   // Settings states
   const [webhookUrl, setWebhookUrl] = useState(() => {
@@ -53,7 +57,7 @@ export default function App() {
     return localStorage.getItem("route52_model") || "v4.0-pro-engine";
   });
   const [systemPrompt, setSystemPrompt] = useState(() => {
-    return localStorage.getItem("route52_system_prompt") || "You are Route'52, a helpful and knowledgeable Bangla native assistant designed to assist users in both Bangla and English with extreme accuracy and coding expertise.";
+    return localStorage.getItem("route52_system_prompt") || "তুমি একজন বাংলাদেশ-নেটিভ AI এজেন্ট। তোমার কাজ হলো বাংলাদেশি ব্যবহারকারীদের সাথে স্বাভাবিক, সংস্কৃতি-সংবেদনশীল এবং ব্যবহারিক ভাষায় কথা বলা — অনুবাদ করা ইংরেজি এজেন্টের মতো শোনানো যাবে না।";
   });
 
   const [supabaseUrl, setSupabaseUrl] = useState(() => {
@@ -87,12 +91,24 @@ export default function App() {
     if (isSupabaseConfigured()) {
       // Get current session
       supabase.auth.getSession().then(({ data: { session } }) => {
-        setUser(session?.user ?? null);
+        if (session?.user) {
+          setUser(session.user);
+          setIsGuest(false);
+          localStorage.setItem("route52_is_guest", "false");
+        } else {
+          setUser(null);
+        }
       });
 
       // Listen to changes
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-        setUser(session?.user ?? null);
+        if (session?.user) {
+          setUser(session.user);
+          setIsGuest(false);
+          localStorage.setItem("route52_is_guest", "false");
+        } else {
+          setUser(null);
+        }
       });
 
       return () => {
@@ -265,11 +281,13 @@ export default function App() {
   const handleSignOut = async () => {
     if (isSupabaseConfigured()) {
       await supabase.auth.signOut();
-      setUser(null);
-      setActiveThreadId(null);
-      setCurrentView("chat");
-      setThreads(loadThreads());
     }
+    setUser(null);
+    setIsGuest(false);
+    localStorage.setItem("route52_is_guest", "false");
+    setActiveThreadId(null);
+    setCurrentView("chat");
+    setThreads(loadThreads());
   };
 
   // Helper to parse n8n response safely
@@ -650,6 +668,22 @@ export default function App() {
 
   const activeThread = threads.find((t) => t.id === activeThreadId);
 
+  if (!user && !isGuest) {
+    return (
+      <AuthPage
+        onSuccess={(u) => {
+          setUser(u);
+          setIsGuest(false);
+          localStorage.setItem("route52_is_guest", "false");
+        }}
+        onEnterAsGuest={() => {
+          setIsGuest(true);
+          localStorage.setItem("route52_is_guest", "true");
+        }}
+      />
+    );
+  }
+
   return (
     <div
       onDragOver={handleDragOver}
@@ -760,6 +794,8 @@ export default function App() {
                         onSelectAction={handleSelectAction}
                         user={user}
                         onOpenAuth={() => setIsAuthModalOpen(true)}
+                        threadsCount={threads.length}
+                        onSignOut={handleSignOut}
                       />
                     </div>
                   ) : (
@@ -806,13 +842,13 @@ export default function App() {
                 </div>
 
                 {/* Sticky Bottom Input Bar (Chat view only) */}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#090e0a] via-[#090e0a]/95 to-transparent pt-6 pb-4 px-3 md:px-8 pointer-events-none z-20">
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#090e0a] via-[#090e0a]/95 to-transparent pt-6 pb-4 px-3  md:px-8 pointer-events-none z-20">
                   <div className="max-w-2xl mx-auto relative group pointer-events-auto">
                     {/* Atmospheric Input Background Glow */}
                     <div className="absolute -inset-0.5 bg-gradient-to-r from-primary/20 to-tertiary/20 rounded-2xl blur opacity-35 group-focus-within:opacity-75 transition duration-1000"></div>
 
                     {/* Input Container */}
-                    <div className="relative flex flex-col bg-surface-container-lowest border border-outline-variant rounded-2xl p-1.5 shadow-2xl focus-within:border-primary/80 transition-all">
+                    <div className="relative flex flex-col bg-surface-container-lowest border border-outline-variant rounded-2xl p-2 shadow-2xl focus-within:border-primary/80 transition-all">
                       
                       {/* Attached files chips list inside input bar */}
                       {attachedFiles.length > 0 && (
